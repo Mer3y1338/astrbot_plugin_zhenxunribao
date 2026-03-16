@@ -23,7 +23,7 @@
 1. 克隆仓库到 AstrBot 插件目录：
 ```bash
 cd AstrBot/data/plugins
-git clone https://github.com/Huahuatgc/astrbot_plugin_zhenxunribao.git astrbot_plugin_zhenxunribao
+git clone https://github.com/luminacry/astrbot_plugin_zhenxunribao
 ```
 
 2. 安装依赖：
