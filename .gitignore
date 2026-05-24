@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+*.log
+*.db
+*.sqlite
+*.sqlite3
+.pytest_cache/
+.venv/
+venv/
+data/
+node_modules/
+*.png.tmp
+/tmp/
