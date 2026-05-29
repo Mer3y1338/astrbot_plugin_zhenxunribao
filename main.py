@@ -23,7 +23,7 @@ from .api.ithome_rss import ITHomeRSS
 from .api.zaobao_api import ZaobaoAPI
 
 
-@register("astrbot_plugin_zhenxunribao", "Huahuatgc", "小真寻记者为你献上今日报道！", "1.2.2", "https://github.com/Mer3y1338/astrbot_plugin_zhenxunribao")
+@register("astrbot_plugin_zhenxunribao", "Huahuatgc", "小真寻记者为你献上今日报道！", "1.2.0", "https://github.com/Huahuatgc/astrbot_plugin_zhenxunribao")
 class ZhenxunReportPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -215,7 +215,7 @@ html, body {
                 async with self.http_session.get(
                     url,
                     headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=10),
+                    timeout=aiohttp.ClientTimeout(total=10), proxy="http://172.17.0.1:7890",
                 ) as resp:
                     if resp.status != 200:
                         logger.warning(f"新番封面下载失败: HTTP {resp.status} {url}")

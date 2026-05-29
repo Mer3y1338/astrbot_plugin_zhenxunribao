@@ -38,7 +38,7 @@ class BGMAPI(BaseAPI):
             async with session.get(
                 self.url,
                 headers=self.headers,
-                timeout=aiohttp.ClientTimeout(total=10)
+                timeout=aiohttp.ClientTimeout(total=10), proxy="http://172.17.0.1:7890"
             ) as response:
                 response.raise_for_status()
                 return await response.json()
