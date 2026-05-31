@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import base64
 import os
 import re
@@ -37,7 +37,13 @@ class ZhenxunReportPlugin(Star):
         self.http_session = aiohttp.ClientSession()
 
         api_token = config.get("api_token", "")
-        self.bgm_api = BGMAPI(session=self.http_session)
+        self.image_proxy = self._get_image_proxy()
+        if self.image_proxy:
+            logger.info(f"真寻日报图片/API代理已启用: {self.image_proxy}")
+        else:
+            logger.info("真寻日报图片/API代理已关闭，使用直连")
+
+        self.bgm_api = BGMAPI(session=self.http_session, proxy=self.image_proxy)
         self.bilibili_api = BilibiliAPI(session=self.http_session)
         self.hitokoto_api = HitokotoAPI(token=api_token, session=self.http_session)
         self.holiday_api = HolidayAPI(token=api_token, session=self.http_session)
@@ -82,8 +88,24 @@ class ZhenxunReportPlugin(Star):
         except Exception as e:
             logger.error(f"启动定时推送任务失败: {e}", exc_info=True)
 
+    def _get_image_proxy(self) -> str | None:
+        """返回 Bangumi API 和新番封面下载使用的代理地址。
+
+        enable_image_proxy = false 时直连。
+        image_proxy_url 支持常见 HTTP 代理地址，例如 http://172.17.0.1:7890。
+        """
+        if not self.config.get("enable_image_proxy", False):
+            return None
+        proxy_url = self.config.get("image_proxy_url", "")
+        if not isinstance(proxy_url, str) or not proxy_url.strip():
+            logger.warning("已启用图片/API代理，但 image_proxy_url 为空，将改用直连")
+            return None
+        return proxy_url.strip()
+
     def _reinit_api_sessions(self):
         """重新初始化 API 客户端的 session"""
+        self.image_proxy = self._get_image_proxy()
+        self.bgm_api.proxy = self.image_proxy
         self.bgm_api.set_session(self.http_session)
         self.bilibili_api.set_session(self.http_session)
         self.hitokoto_api.set_session(self.http_session)
@@ -151,6 +173,10 @@ class ZhenxunReportPlugin(Star):
             )
         )
 
+        # 预下载并内嵌 Bangumi 封面，避免 Playwright 截图时依赖外链加载。
+        # 外链偶发超时/防盗链/网络抖动时会导致日报图里封面缺失；转成 data URI 后截图稳定。
+        anime_list = await self._embed_anime_cover_images(anime_list or [])
+
         template_data = {
             "date_info": date_info,
             "anime_list": anime_list or [],
@@ -194,6 +220,57 @@ html, body {
         logger.info("日报生成成功")
         return image_path
     
+    async def _embed_anime_cover_images(self, anime_list: list[dict]) -> list[dict]:
+        """Download remote anime covers and convert them to data URIs before rendering."""
+        if not anime_list:
+            return []
+
+        async def fetch_as_data_uri(url: str) -> str | None:
+            if not url or not url.startswith(("http://", "https://")):
+                return None
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Referer": "https://bgm.tv/",
+                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            }
+            try:
+                async with self.http_session.get(
+                    url,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                    proxy=self.image_proxy,
+                ) as resp:
+                    if resp.status != 200:
+                        logger.warning(f"新番封面下载失败: HTTP {resp.status} {url}")
+                        return None
+                    data = await resp.read()
+                    if not data:
+                        logger.warning(f"新番封面下载为空: {url}")
+                        return None
+                    content_type = resp.headers.get("Content-Type", "image/jpeg").split(";", 1)[0]
+                    if not content_type.startswith("image/"):
+                        content_type = "image/jpeg"
+                    return f"data:{content_type};base64,{base64.b64encode(data).decode('ascii')}"
+            except Exception as e:
+                logger.warning(f"新番封面下载异常: {url}, {type(e).__name__}: {e}")
+                return None
+
+        tasks = []
+        for anime in anime_list:
+            url = anime.get("image", "") if isinstance(anime, dict) else ""
+            tasks.append(fetch_as_data_uri(url))
+
+        embedded_images = await asyncio.gather(*tasks, return_exceptions=True)
+        result = []
+        for anime, embedded in zip(anime_list, embedded_images):
+            item = dict(anime)
+            if isinstance(embedded, str) and embedded.startswith("data:image/"):
+                item["image"] = embedded
+            elif isinstance(embedded, Exception):
+                logger.warning(f"新番封面内嵌失败: {item.get('title', '未知')}, {embedded}")
+            result.append(item)
+        return result
+
     async def _fetch_all_data(
         self,
         max_anime_count: int,

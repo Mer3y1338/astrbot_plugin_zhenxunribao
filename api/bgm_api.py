@@ -13,15 +13,17 @@ from .base_api import BaseAPI
 class BGMAPI(BaseAPI):
     """BGM API 处理类"""
     
-    def __init__(self, session: Optional[aiohttp.ClientSession] = None):
+    def __init__(self, session: Optional[aiohttp.ClientSession] = None, proxy: Optional[str] = None):
         """
         初始化
         
         Args:
             session: 可选的 aiohttp.ClientSession，如果提供则复用
+            proxy: 可选代理地址，例如 http://172.17.0.1:7890。为空则直连。
         """
         super().__init__(session)
         self.url = "https://api.bgm.tv/calendar"
+        self.proxy = proxy.strip() if isinstance(proxy, str) and proxy.strip() else None
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
@@ -38,7 +40,8 @@ class BGMAPI(BaseAPI):
             async with session.get(
                 self.url,
                 headers=self.headers,
-                timeout=aiohttp.ClientTimeout(total=10)
+                timeout=aiohttp.ClientTimeout(total=10),
+                proxy=self.proxy,
             ) as response:
                 response.raise_for_status()
                 return await response.json()
@@ -101,6 +104,8 @@ class BGMAPI(BaseAPI):
                         # 获取图片（使用 medium 尺寸）
                         images = item.get('images', {})
                         image_url = images.get('medium', '') or images.get('common', '')
+                        if image_url and image_url.startswith('http://'):
+                            image_url = image_url.replace('http://', 'https://')
                         
                         if title and image_url:
                             anime_list.append({
